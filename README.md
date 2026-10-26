@@ -51,6 +51,7 @@
 说明：
 
 - 以 `updatedAt`（最后修改时间）较新的一方为准；两台设备同时改同一条记录时，后保存的覆盖先保存的。
+- 新手机 / 新浏览器建议**先填密钥同步、拉取云端数据**，再开始记账；本地为空时不会用空数据覆盖云端。
 - 密钥只保存在本机 `localStorage`，上传前会从数据里剔除；Cloudflare 端也会把 `settings` 重置为空。
 - GitHub Pages 或本地双击 `index.html` 打开时，会自动回退到 `https://dividend-app-cym.pages.dev/api/sync`。
 - 换手机 / 清除浏览器数据前，建议先「导出 JSON 备份」。
