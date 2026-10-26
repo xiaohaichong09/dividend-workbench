@@ -17,7 +17,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 BASE = os.path.dirname(os.path.abspath(__file__))
 TOKEN_FILE = os.path.join(os.path.dirname(BASE), "Index 2", "tools", "cf_token.txt")
 ACCOUNT = "5cb2e64101b467bd1637c7e6a1ad859d"
-PROJECT = "dividend"
+PROJECT = "dividend-app"
 KV_ID = "b3cc120068144f2bad955f594feda484"  # dividend-workbench
 
 SITE_FILES = [
@@ -26,10 +26,10 @@ SITE_FILES = [
     "js/app.js",
     "manifest.webmanifest",
     "sw.js",
+    "_worker.js",
     "icons/icon-180.png",
     "icons/icon-192.png",
     "icons/icon-512.png",
-    "functions/api/sync.js",
 ]
 
 try:
@@ -82,25 +82,29 @@ def multipart(parts):
 
 def main():
     token = open(TOKEN_FILE, encoding="utf-8").read().strip()
-    sync_key = read_sync_key()
 
-    print("1) 绑定 KV 与同步密钥 ...")
-    r = api("PATCH", f"/accounts/{ACCOUNT}/pages/projects/{PROJECT}", token,
-            data={"deployment_configs": {"production": {"bindings": {
-                "KV": {"type": "kv_namespace", "namespace_id": KV_ID},
-                "SYNC_KEY": {"type": "secret_text", "value": sync_key},
-            }}}})
-    if not r.get("success"):
-        print("   绑定失败:", json.dumps(r.get("errors"), ensure_ascii=False))
+    if "--bind" in sys.argv:
+        # 单独执行绑定(注意:绑定后紧接着的部署会被空配置部署覆盖,故与上传分开跑)
+        sync_key = read_sync_key()
+        print("1) 绑定 KV 与同步密钥 ...")
+        r = api("PATCH", f"/accounts/{ACCOUNT}/pages/projects/{PROJECT}", token,
+                data={"deployment_configs": {"production": {"bindings": {
+                    "KV": {"type": "kv_namespace", "namespace_id": KV_ID},
+                    "SYNC_KEY": {"type": "secret_text", "value": sync_key},
+                }}}})
+        if not r.get("success"):
+            print("   绑定失败:", json.dumps(r.get("errors"), ensure_ascii=False))
+            return
+        print("   绑定成功")
         return
 
-    print("2) 构建部署清单 ...")
+    print("1) 构建部署清单 ...")
     contents = {}
     manifest = {}
     for f in SITE_FILES:
         b = open(os.path.join(BASE, f), "rb").read()
         h = file_hash(b)
-        manifest[f] = {"hash": h}
+        manifest["/" + f] = {"hash": h}  # Pages 直传清单路径需带前导斜杠
         contents[h] = b
     print(f"   {len(manifest)} 个文件, {len(contents)} 个唯一内容块")
 
@@ -109,7 +113,7 @@ def main():
         parts.append((h, b, "application/octet-stream", h))
     body, ctype = multipart(parts)
 
-    print("3) 上传部署 ...")
+    print("2) 上传部署 ...")
     r = api("POST", f"/accounts/{ACCOUNT}/pages/projects/{PROJECT}/deployments", token,
             raw=body, headers={"Content-Type": ctype})
     if not r.get("success"):
@@ -117,7 +121,7 @@ def main():
         return
     dep_id = r["result"]["id"]
 
-    print("4) 等待生效 ...")
+    print("3) 等待生效 ...")
     for i in range(30):
         time.sleep(4)
         d = api("GET", f"/accounts/{ACCOUNT}/pages/projects/{PROJECT}/deployments", token)
