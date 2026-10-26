@@ -1,2 +1,19 @@
+# 密钥 / 本机配置（绝对不要提交）
 同步密钥.txt
+scripts/cf_token.txt
+cf_token.txt
+.env
+.dev.vars
+
+# Python
 __pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log

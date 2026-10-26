@@ -1,0 +1,12 @@
+name = "dividend-sync"
+main = "dividend-sync.js"
+compatibility_date = "2026-10-26"
+
+# 可选：自定义域名
+# routes = [{ pattern = "sync.example.com", custom_domain = true }]
+
+[[kv_namespaces]]
+binding = "KV"
+id = "b3cc120068144f2bad955f594feda484"
+
+# SYNC_KEY 用 `npx wrangler secret put SYNC_KEY` 设置，不要写进仓库。

@@ -1,40 +1,122 @@
-// 攒股收息 · Pages 直传函数(_worker.js 高级模式)
-// /api/sync → KV 存取(需 X-Auth-Key 与部署时设置的 SYNC_KEY 匹配);其余请求回源静态资源。
+/* 攒股收息 · Cloudflare Pages 高级模式 Worker
+ * /api/sync  → KV 存取整份工作台状态
+ * /api/health → 健康检查
+ * 其余请求 → 静态资源
+ *
+ * 需要在 Pages 项目里绑定：
+ *   KV        → KV namespace（dividend-workbench）
+ *   SYNC_KEY  → Secret（同步密钥）
+ */
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, X-Auth-Key",
+  "Access-Control-Allow-Methods": "GET, PUT, HEAD, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, X-Auth-Key, X-Client-Version",
+  "Access-Control-Max-Age": "86400",
 };
+const NO_STORE = { "Cache-Control": "no-store", "X-Robots-Tag": "noindex" };
+const MAX_BODY = 1024 * 1024;
 
-const j = (obj, status) => new Response(JSON.stringify(obj), {
-  status,
-  headers: { ...CORS, "Content-Type": "application/json" },
-});
+function json(obj, status, extra) {
+  return new Response(JSON.stringify(obj), {
+    status: status || 200,
+    headers: Object.assign(
+      { "Content-Type": "application/json; charset=utf-8" },
+      CORS,
+      NO_STORE,
+      extra || {}
+    ),
+  });
+}
+
+function safeEqual(a, b) {
+  const left = String(a || "");
+  const right = String(b || "");
+  if (!left || !right || left.length !== right.length) return false;
+  let diff = 0;
+  for (let i = 0; i < left.length; i += 1) diff |= left.charCodeAt(i) ^ right.charCodeAt(i);
+  return diff === 0;
+}
+
+function sanitizeState(raw) {
+  if (!raw || typeof raw !== "object" || !Array.isArray(raw.stocks)) {
+    throw new Error("invalid_state");
+  }
+  const data = Object.assign({}, raw);
+  data.schema = 3;
+  data.goal = Math.max(0, Number(data.goal) || 0);
+  data.updatedAt = Number(data.updatedAt) || Date.now();
+  // 同步配置属于每台设备，不写入云端；密钥更不应该离开本机
+  data.settings = { syncUrl: "", syncKey: "", auto: true };
+  return data;
+}
 
 async function handleSync(request, env) {
-  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
-  const key = request.headers.get("X-Auth-Key") || "";
-  if (!env.SYNC_KEY || key !== env.SYNC_KEY) return j({ error: "unauthorized" }, 401);
-
-  if (request.method === "GET") {
-    const v = await env.KV.get("state");
-    if (v == null) return j({ error: "not_found" }, 404);
-    return new Response(v, { status: 200, headers: { ...CORS, "Content-Type": "application/json" } });
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: Object.assign({}, CORS, NO_STORE) });
   }
+  if (!env.KV || !env.SYNC_KEY) {
+    return json({ error: "not_configured", message: "KV 或 SYNC_KEY 未绑定" }, 503);
+  }
+
+  const key = request.headers.get("X-Auth-Key") || "";
+  if (!safeEqual(key, env.SYNC_KEY)) return json({ error: "unauthorized" }, 401);
+
+  if (request.method === "GET" || request.method === "HEAD") {
+    const value = await env.KV.get("state");
+    if (value == null) return json({ error: "not_found" }, 404);
+    return new Response(request.method === "HEAD" ? null : value, {
+      status: 200,
+      headers: Object.assign({ "Content-Type": "application/json; charset=utf-8" }, CORS, NO_STORE),
+    });
+  }
+
   if (request.method === "PUT") {
     const body = await request.text();
-    if (body.length > 512 * 1024) return j({ error: "too_large" }, 413);
-    try { JSON.parse(body); } catch { return j({ error: "bad_json" }, 400); }
-    await env.KV.put("state", body);
-    return j({ ok: true, size: body.length }, 200);
+    if (body.length > MAX_BODY) return json({ error: "too_large" }, 413);
+    let parsed;
+    try {
+      parsed = JSON.parse(body);
+    } catch (e) {
+      return json({ error: "bad_json" }, 400);
+    }
+    let clean;
+    try {
+      clean = sanitizeState(parsed);
+    } catch (e) {
+      return json({ error: "bad_state", message: "stocks 必须是数组" }, 400);
+    }
+    const text = JSON.stringify(clean);
+    await env.KV.put("state", text);
+    return json({ ok: true, size: text.length, updatedAt: clean.updatedAt }, 200);
   }
-  return j({ error: "method_not_allowed" }, 405);
+
+  return json({ error: "method_not_allowed" }, 405);
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname === "/api/sync") return handleSync(request, env);
-    return env.ASSETS.fetch(request);
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+
+    try {
+      if (path === "/api/sync") return await handleSync(request, env);
+      if (path === "/api/health") {
+        return json({
+          ok: true,
+          service: "dividend-sync",
+          kv: !!env.KV,
+          auth: !!env.SYNC_KEY,
+          time: new Date().toISOString(),
+        });
+      }
+      if (path.startsWith("/api/")) return json({ error: "not_found" }, 404);
+
+      if (!env.ASSETS) {
+        return new Response("Static assets binding is missing", { status: 404 });
+      }
+      return env.ASSETS.fetch(request);
+    } catch (e) {
+      return json({ error: "internal_error", message: String(e && e.message ? e.message : e) }, 500);
+    }
   },
 };
