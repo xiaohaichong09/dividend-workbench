@@ -97,8 +97,9 @@ py scripts\deploy_cloudflare.py --worker-only
 ### GitHub Pages（源码镜像 / 备用站）
 
 仓库：<https://github.com/xiaohaichong09/dividend-workbench>
+备用站：<https://xiaohaichong09.github.io/dividend-workbench/>
 
-在仓库 **Settings → Pages** 选择 `main` 分支根目录即可。GitHub Pages 没有后端，页面会自动使用 Cloudflare 的同步接口；PWA 的 Service Worker、图标均使用相对路径，子目录部署也能正常安装。
+已启用 GitHub Pages（`main` 分支根目录）。GitHub Pages 没有后端，页面会自动使用 Cloudflare 的同步接口；PWA 的 Service Worker、图标均使用相对路径，子目录部署也能正常安装。
 
 ### 同步接口
 

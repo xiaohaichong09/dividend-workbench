@@ -7,7 +7,7 @@
 | 主站（Cloudflare Pages） | <https://dividend-app-cym.pages.dev> |
 | 备用站（Cloudflare Pages） | <https://dividend-45f.pages.dev> |
 | GitHub 仓库 | <https://github.com/xiaohaichong09/dividend-workbench> |
-| GitHub Pages（启用后） | <https://xiaohaichong09.github.io/dividend-workbench/> |
+| GitHub Pages（已启用） | <https://xiaohaichong09.github.io/dividend-workbench/> |
 
 Cloudflare 账号：`420775251@qq.com`
 
